@@ -1,30 +1,418 @@
-# Button Interrupt
-Last lab you were introduced to the idea of "Polling" where in you would constantly check the status of the P1IN register to see if something has changed. While your code may have worked, it ends up spending a ton of time just checking something that has not changed. What we can do instead is use another two registers available to us from the GPIO peripheral, P1IE and P1IES, to allow our processor to just chill out and wait until something happens to act upon it. Without spending too much space on this README with explanations, what makes these interrupts tick is the following code:
+# Lab 3: Button Interrupt
 
-```c
+## General Structure
+
+All five boards follow the same general format for achieving a three-speed
+LED toggle. It starts out with both LEDs off, then when the button is pressed, 
+they begin to blink slowly. Pressing again further icreases the speed to medium, 
+and another press to fast speed.
+
+A further press will stop the LEDs from blinking to restart the cycle again. 
+However, it only ensures that they are not blinking, NOT that they are OFF. 
+If this happens, the user can reset the program by hitting the RESET button
+so that they are in fact off. As a design decision, it was chosen to leave this
+behavior in due to the ease of the reset button being readily available.
+
+## Important Distinctions
+
+Generally, differences were in the pinouts for pull-up resistors and buttons.
+
+### MSP430G2553
+
+// Loads configurations for all MSP430 boards
+#include <msp430.h>
+ 
+// Declares loop variable as volatile
+// This prevents compiler from removing it for being "stuck" in a loop
+// when in fact it is working as intended
+volatile unsigned int i, delay, mode;
+ 
+int main(void) {
+    
+  // Stops the watchdog timer
+  WDTCTL = WDTPW + WDTHOLD;
+  
+  // Sets up bits 0 and 6 of P1 as output
+  P1DIR |= BIT0 + BIT6;
+  
+  // Initializes BIT0 and BIT6 to 0
+  // Also sets P1.3 (button) as output
+  P1OUT = BIT3;
+  
+  P1IE |= BIT3; // Interrupt Enabled on P1.3 (the button)
+  P1IFG &= ~BIT3; // CLears interrupt flag once button P1.3 is pressed
+  
+  P1REN |= BIT3; // Enable Pull Up on (P1.3)
+  P1IES |= BIT3; // P1.3 Hi/lo edge
+ 
+__bis_SR_register(GIE); // Enables all integrupts (Global)
+
+  // Initializes the amount of delay between LED changes
+  delay = 0x6000;
+  
+  // Used in case statement to set speed of LED, initially set to slowest
+  mode = 0;
+
+  // No parameters means it loops forever
+  for (;;) {
+    
+    if (mode != 0) {  
+    // toggle bit 0 of P1
+    P1OUT ^= BIT0 + BIT6;
+    
+    // delay for a while
+    for (i = 0; i < delay; i++);
+    }
+  }
+  
+}
+
+// Interrupt subroutine
+// Called whenever button is pressed
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)
 {
+    mode++; // Increase mode
+    switch (mode) {
+    case 0:
+        break;
+    case 1:
+        delay = 0x6000; // Slow timing
+        break;
+    case 2:
+        delay = 0x3500; // Medium timing
+        break;
+    case 3:
+        delay = 0x1000; // Fast timing
+        break;
+    default:
+		// Catchall in case of error (should not end up here)
+		// Resets mode and sets to slow timing
+        delay = 0x6000;
+        mode = 0;
+	}
+    
+    P1IFG &= ~BIT3; // P1.3 interrupt flag cleared
 }
-```
 
-While you still need to initialize the Ports to be interrupt enabled and clear the flags, this "Pragma Vector" tells the compiler that when a particular interrupt occurs, run this code. 
+### MSP430FR2311
 
-## A word of caution...
-While you might be willing to just jump straight in and begin using example code you may find, I would seriously take a few minutes and find a few good videos or tutorials to help understand exactly what is happening in the processor. I implore you to do this since you will inevitably have issues in the future which are solved by not understanding how the processor processes interrupts. A prime example is when I once tried implementing UART and I did not realize that you had to clear a flag or else my code would get stuck in an infinite loop. Hours of my life are now gone thanks to me at the time not understanding how interrupts worked with the peripherals I was utilizing. A few resources I have used in the past include:
-* https://youtu.be/GR8S2XT47eI?t=1334
-* http://processors.wiki.ti.com/index.php/MSP430_LaunchPad_Interrupt_vs_Polling
-* http://www.simplyembedded.org/tutorials/msp430-interrupts/
+#include <msp430.h>
+ 
+volatile unsigned int i, delay, mode;
+ 
+int main(void) {
+    
+  // Stops the watchdog timer
+  WDTCTL = WDTPW + WDTHOLD;
+  
+  // Disables default high-impedance mode
+  // Done by clearing the register PM5CTL0
+  // and unlocking I/O pins  (~LOCKLPM5)
+  PM5CTL0 &= ~LOCKLPM5;
+  
+  // Sets up P1.0 and P2.0 as outputs
+  P1DIR |= BIT0;
+  P2DIR |= BIT0;
+  
+  // Initializes P1.0 and P2.0 as 0
+  // Also sets P1.1 (button) as output
+  P1OUT = BIT1;
+  P2OUT = 0x00;
+  
+  P1IE |= BIT1; // Interrupt Enabled on P1.1 (the button)
+  P1IFG &= ~BIT1; // CLears interrupt flag once button P1.1 is pressed
+  
+  P1REN |= BIT1; // Enable Pull Up on (P1.1)
+  P1IES |= BIT1; // P1.1 Hi/lo edge
+ 
+__bis_SR_register(GIE); // Enables all integrupts (Global)
 
-## Task
-Your goal for this part of the lab is to replicate your button code from Lab 2, where the LED should change states only when the button is pressed. This can be extended to include behaviors such as only have the LED on when the button is depressed, or have the LED blink one color when pressed and another when it is let go. Another behavior extends from the second lab which is speed control based on the button presses. For example, have the rate of the LED cycle between a "low", "Medium", and "High" rate of speed.
+  // Initializes the amount of delay between LED changes
+  delay = 0x6000;
+  
+  // Used in case statement to set speed of LED, initially set to slowest
+  mode = 0;
 
-## Extra Work 
-### Binary Counter/Shift Register
-Either use a function generator, another processor, or a button to control your microcontroller as an 8-bit binary counter using 8 LEDs to indicate the current status of the counter.
+  // No parameters means it loops forever
+  for (;;) {
+    
+    if (mode != 0) {  
+    // toggle LEDs
+    P1OUT ^= BIT0;
+	P2OUT ^= BIT0;
+    
+    // delay for a while
+    for (i = 0; i < delay; i++);
+    }
+  }
+  
+}
 
-### Multiple Buttons
-Come up with a behavior of your own that incorporates needing to use two buttons or more and these two buttons must be implemented using interrupts.
+// Interrupt subroutine
+// Called whenever button is pressed
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+{
+    mode++; // Increase mode
+    switch (mode) {
+    case 0:
+        break;
+    case 1:
+        delay = 0x6000; // Slow timing
+        break;
+    case 2:
+        delay = 0x3500; // Medium timing
+        break;
+    case 3:
+        delay = 0x1000; // Fast timing
+        break;
+    default:
+		// Catchall in case of error (should not end up here)
+		// Resets mode and sets to slow timing
+        delay = 0x6000;
+        mode = 0;
+	}
+    
+    P1IFG &= ~BIT1; // P1.1 interrupt flag cleared
+}
 
-### (Recommended) Energy Trace
-Using the built in EnergyTrace(R) software in CCS and the corresponding supporting hardware on the MSP430 development platforms, analyze the power consumption between the button based blink code you wrote last week versus this week. What can you do to decrease the amount of power used within the microcontroller in this code? Take a look at the MSP430FR5994 and the built in SuperCap and see how long your previous code and the new code lasts. For a quick intro to EnergyTrace(R), take a look at this video: https://youtu.be/HqeDthLrcsg
+### MSP430F5529
+
+#include <msp430.h>
+ 
+volatile unsigned int i, delay, mode;
+ 
+int main(void) {
+    
+  // Stops the watchdog timer
+  WDTCTL = WDTPW + WDTHOLD;
+  
+  // Sets up P1.0 and P4.7 as outputs
+  P1DIR |= BIT0;
+  P4DIR |= BIT7;
+  
+  // Initializes P1.0 and P4.7 as 0
+  // Also sets P1.1 (button) as output
+  P1OUT = BIT1;
+  P4OUT = 0x00;
+  
+  P1IE |= BIT1; // Interrupt Enabled on P1.1 (the button)
+  P1IFG &= ~BIT1; // CLears interrupt flag once button P1.1 is pressed
+  
+  P1REN |= BIT1; // Enable Pull Up on (P1.1)
+  P1IES |= BIT1; // P1.1 Hi/lo edge
+ 
+__bis_SR_register(GIE); // Enables all integrupts (Global)
+
+  // Initializes the amount of delay between LED changes
+  delay = 0x6000;
+  
+  // Used in case statement to set speed of LED, initially set to slowest
+  mode = 0;
+
+  // No parameters means it loops forever
+  for (;;) {
+    
+    if (mode != 0) {  
+    // toggle LEDs
+    P1OUT ^= BIT0;
+	P4OUT ^= BIT7;
+    
+    // delay for a while
+    for (i = 0; i < delay; i++);
+    }
+  }
+  
+}
+
+// Interrupt subroutine
+// Called whenever button is pressed
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+{
+    mode++; // Increase mode
+    switch (mode) {
+    case 0:
+        break;
+    case 1:
+        delay = 0x6000; // Slow timing
+        break;
+    case 2:
+        delay = 0x3500; // Medium timing
+        break;
+    case 3:
+        delay = 0x1000; // Fast timing
+        break;
+    default:
+		// Catchall in case of error (should not end up here)
+		// Resets mode and sets to slow timing
+        delay = 0x6000;
+        mode = 0;
+	}
+    
+    P1IFG &= ~BIT1; // P1.1 interrupt flag cleared
+	
+}
+
+### MSP430FR5994
+
+#include <msp430.h>
+ 
+volatile unsigned int i, delay, mode;
+ 
+int main(void) {
+    
+  // Stops the watchdog timer
+  WDTCTL = WDTPW + WDTHOLD;
+  
+  // Disables default high-impedance mode
+  // Done by clearing the register PM5CTL0
+  // and unlocking I/O pins  (~LOCKLPM5)
+  PM5CTL0 &= ~LOCKLPM5;
+  
+  // Sets up P1.0 and P1.1 as outputs
+  P1DIR |= BIT0 + BIT1;
+  
+  // Initializes P1.0 and P1.1 as 0
+  // Sets Resistor to pullup (1 is low)
+  P1OUT = BIT6;
+  
+  P5IE |= BIT6; // Interrupt Enabled on P5.6 (the button)
+  P5IFG &= ~BIT6; // CLears interrupt flag once button P5.6 is pressed
+  
+  P5REN |= BIT6; // Enable Pull Up on (P5.6)
+  P5IES |= BIT6; // P5.6 Hi/lo edge
+ 
+__bis_SR_register(GIE); // Enables all integrupts (Global)
+
+  // Initializes the amount of delay between LED changes
+  delay = 0x6000;
+  
+  // Used in case statement to set speed of LED, initially set to slowest
+  mode = 0;
+
+  // No parameters means it loops forever
+  for (;;) {
+    
+    if (mode != 0) {  
+    // toggle LEDs
+    P1OUT ^= BIT0 + BIT1;
+    
+    // delay for a while
+    for (i = 0; i < delay; i++);
+    }
+  }
+  
+}
+
+// Interrupt subroutine
+// Called whenever button is pressed
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+{
+    mode++; // Increase mode
+    switch (mode) {
+    case 0:
+        break;
+    case 1:
+        delay = 0x6000; // Slow timing
+        break;
+    case 2:
+        delay = 0x3500; // Medium timing
+        break;
+    case 3:
+        delay = 0x1000; // Fast timing
+        break;
+    default:
+		// Catchall in case of error (should not end up here)
+		// Resets mode and sets to slow timing
+        delay = 0x6000;
+        mode = 0;
+	}
+    
+    P5IFG &= ~BIT6; // P5.6 interrupt flag cleared
+	
+}
+
+### MSP430FR6989
+
+#include <msp430.h>
+ 
+volatile unsigned int i, delay, mode;
+ 
+int main(void) {
+    
+  // Stops the watchdog timer
+  WDTCTL = WDTPW + WDTHOLD;
+  
+  // Disables default high-impedance mode
+  // Done by clearing the register PM5CTL0
+  // and unlocking I/O pins  (~LOCKLPM5)
+  PM5CTL0 &= ~LOCKLPM5;
+  
+  // Sets up P1.0 and P9.7 as output
+  P1DIR |= BIT0;
+  P9DIR |= BIT7;
+  
+  // Initializes P1.0 and P9.7 to 0
+  // Also sets P1.1 (button) as output
+  P1OUT = BIT1;
+  P9OUT = 0x00;
+  
+  P1IE |= BIT1; // Interrupt Enabled on P1.1 (the button)
+  P1IFG &= ~BIT1; // CLears interrupt flag once button P1.1 is pressed
+  
+  P1REN |= BIT1; // Enable Pull Up on (P1.1)
+  P1IES |= BIT1; // P1.1 Hi/lo edge
+ 
+__bis_SR_register(GIE); // Enables all integrupts (Global)
+
+  // Initializes the amount of delay between LED changes
+  delay = 0x6000;
+  
+  // Used in case statement to set speed of LED, initially set to slowest
+  mode = 0;
+
+  // No parameters means it loops forever
+  for (;;) {
+    
+    if (mode != 0) {  
+    // toggle bit 0 of P1
+    P1OUT ^= BIT0;
+	P9OUT ^= BIT7;
+    
+    // delay for a while
+    for (i = 0; i < delay; i++);
+    }
+  }
+  
+}
+
+// Interrupt subroutine
+// Called whenever button is pressed
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+{
+    mode++; // Increase mode
+    switch (mode) {
+    case 0:
+        break;
+    case 1:
+        delay = 0x6000; // Slow timing
+        break;
+    case 2:
+        delay = 0x3500; // Medium timing
+        break;
+    case 3:
+        delay = 0x1000; // Fast timing
+        break;
+    default:
+		// Catchall in case of error (should not end up here)
+		// Resets mode and sets to slow timing
+        delay = 0x6000;
+        mode = 0;
+	}
+    
+    P1IFG &= ~BIT1; // P1.1 interrupt flag cleared
+}
