@@ -1,5 +1,6 @@
-// Loads configurations for all MSP430 boards
 #include <msp430.h>
+ 
+volatile unsigned int i, delay, mode;
  
 int main(void) {
     
@@ -11,34 +12,66 @@ int main(void) {
   // and unlocking I/O pins  (~LOCKLPM5)
   PM5CTL0 &= ~LOCKLPM5;
   
-  // Sets up bit 0 of P1 as output
-  P1DIR |= BIT0;
+  // Sets up P1.0 and P1.1 as outputs
+  P1DIR |= BIT0 + BIT1;
   
-  // Initializes BIT0 (LED) to 0
-  // Sets up P1.6 as pull-up resistor
-  // as opposed to pull-down
-  P1OUT = BIT6;
+  // Initializes P1.0 and P1.1 as 0
+  // Sets Resistor to pullup (1 is low)
+  P5OUT = BIT6;
   
-  // Connects the on-board resistor to P5.6
-  P5REN |= BIT6;
+  P5IE |= BIT6; // Interrupt Enabled on P5.6 (the button)
+  P5IFG &= ~BIT6; // CLears interrupt flag once button P5.6 is pressed
   
-  // Declares loop variable as volatile
-  // This prevents compiler from removing it for being "stuck" in a loop
-  // when in fact it is working as intended
-  volatile unsigned int i;
+  P5REN |= BIT6; // Enable Pull Up on (P5.6)
+  P5IES |= BIT6; // P5.6 Hi/lo edge
+ 
+__bis_SR_register(GIE); // Enables all integrupts (Global)
+
+  // Initializes the amount of delay between LED changes
+  delay = 0x6000;
+  
+  // Used in case statement to set speed of LED, initially set to slowest
+  mode = 0;
 
   // No parameters means it loops forever
   for (;;) {
     
-	//Runs when the value of the port input is the same as the input
-	//i.e. the button is not pressed
-	while(P5IN & BIT6)
-        {
-            // Output is set to the opposite of what the LED is
-			// since button press is low, release is high
-			P1OUT &= ~BIT0;
-        }
-    P1OUT |= 0x01;	// Toggles the LED
+    if (mode != 0) {  
+    // toggle LEDs
+    P1OUT ^= BIT0 + BIT1;
+    
+    // delay for a while
+    for (i = 0; i < delay; i++);
+    }
   }
   
+}
+
+// Interrupt subroutine
+// Called whenever button is pressed
+#pragma vector=PORT5_VECTOR
+__interrupt void Port_5(void)
+{
+    mode++; // Increase mode
+    switch (mode) {
+    case 0:
+        break;
+    case 1:
+        delay = 0x6000; // Slow timing
+        break;
+    case 2:
+        delay = 0x3500; // Medium timing
+        break;
+    case 3:
+        delay = 0x1000; // Fast timing
+        break;
+    default:
+		// Catchall in case of error (should not end up here)
+		// Resets mode and sets to slow timing
+        delay = 0x6000;
+        mode = 0;
+	}
+    
+    P5IFG &= ~BIT6; // P5.6 interrupt flag cleared
+	
 }

@@ -18,6 +18,7 @@ behavior in due to the ease of the reset button being readily available.
 Generally, differences were in the pinouts for pull-up resistors and buttons.
 
 ### MSP430G2553
+//---------------------------------------------------------------------------------------
 
 // Loads configurations for all MSP430 boards
 #include <msp430.h>
@@ -96,6 +97,7 @@ __interrupt void Port_1(void)
 }
 
 ### MSP430FR2311
+//---------------------------------------------------------------------------------------
 
 #include <msp430.h>
  
@@ -178,6 +180,7 @@ __interrupt void Port_1(void)
 }
 
 ### MSP430F5529
+//---------------------------------------------------------------------------------------
 
 #include <msp430.h>
  
@@ -256,6 +259,7 @@ __interrupt void Port_1(void)
 }
 
 ### MSP430FR5994
+//---------------------------------------------------------------------------------------
 
 #include <msp430.h>
  
@@ -276,7 +280,7 @@ int main(void) {
   
   // Initializes P1.0 and P1.1 as 0
   // Sets Resistor to pullup (1 is low)
-  P1OUT = BIT6;
+  P5OUT = BIT6;
   
   P5IE |= BIT6; // Interrupt Enabled on P5.6 (the button)
   P5IFG &= ~BIT6; // CLears interrupt flag once button P5.6 is pressed
@@ -308,8 +312,8 @@ __bis_SR_register(GIE); // Enables all integrupts (Global)
 
 // Interrupt subroutine
 // Called whenever button is pressed
-#pragma vector=PORT1_VECTOR
-__interrupt void Port_1(void)
+#pragma vector=PORT5_VECTOR
+__interrupt void Port_5(void)
 {
     mode++; // Increase mode
     switch (mode) {
@@ -336,6 +340,7 @@ __interrupt void Port_1(void)
 }
 
 ### MSP430FR6989
+//---------------------------------------------------------------------------------------
 
 #include <msp430.h>
  
